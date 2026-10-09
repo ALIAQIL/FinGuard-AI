@@ -1,0 +1,71 @@
+{
+  "dataset": "data/raw/creditcard.csv",
+  "rows_read": 284807,
+  "rows_accepted": 283726,
+  "rows_quarantined": 0,
+  "fraud_count": 473,
+  "fraud_rate": 0.001667101358352777,
+  "quality": {
+    "rows": 284807,
+    "columns": 31,
+    "missing_cells": 0,
+    "exact_duplicates": 1081,
+    "invalid_target_rows": 0,
+    "negative_amount_rows": 0,
+    "schema_ok": true,
+    "contract_valid_rows": 284807
+  },
+  "split": {
+    "train": 170235,
+    "validation": 56745,
+    "test": 56746,
+    "strategy": "chronological 60/20/20"
+  },
+  "models": {
+    "logistic_regression": {
+      "status": "ok",
+      "train_seconds": 2.0618964360000973,
+      "test_score_seconds": 0.01594324100005906,
+      "validation_threshold": 0.99,
+      "test": {
+        "threshold": 0.99,
+        "precision": 0.5267857142857143,
+        "recall": 0.7972972972972973,
+        "f1": 0.6344086021505376,
+        "roc_auc": 0.9841037616173485,
+        "pr_auc": 0.7610956975438048,
+        "precision_at_k": 0.7297297297297297,
+        "confusion_matrix": {
+          "tn": 56619,
+          "fp": 53,
+          "fn": 15,
+          "tp": 59
+        },
+        "inference_ms_per_row": 0.0002809579706068985
+      }
+    },
+    "xgboost": {
+      "status": "ok",
+      "train_seconds": 2.8350932449975517,
+      "test_score_seconds": 0.06881406400134438,
+      "validation_threshold": 0.97,
+      "test": {
+        "threshold": 0.97,
+        "precision": 0.8666666666666667,
+        "recall": 0.7027027027027027,
+        "f1": 0.7761194029850746,
+        "roc_auc": 0.9803754559189342,
+        "pr_auc": 0.7820055279775097,
+        "precision_at_k": 0.7567567567567568,
+        "confusion_matrix": {
+          "tn": 56664,
+          "fp": 8,
+          "fn": 22,
+          "tp": 52
+        },
+        "inference_ms_per_row": 0.0012126680999778728
+      }
+    }
+  },
+  "elapsed_seconds": 12.137019305999274
+}
