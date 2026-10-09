@@ -1,165 +1,159 @@
 # FinGuard AI
 
-FinGuard AI is a portfolio project for detecting suspicious financial transactions with batch data engineering, machine learning, and event-driven streaming.
+FinGuard AI is a fraud-detection engineering project built around the public anonymized ULB/Worldline credit-card dataset. It demonstrates data profiling, data-quality validation, leakage-aware feature preparation, imbalanced classification, Kafka event replay, and Spark Structured Streaming concepts.
 
-> Status: Milestone 1 — dataset decision, architecture, repository bootstrap, and Phase 1 EDA foundation.
+## Current status
 
-## Project presentation
+**Phase 1 is implemented and measured.** The benchmark and CI paths are working. The Kafka and Spark streaming components are functional foundations, but the repository does not claim an end-to-end production scoring service yet.
 
-FinGuard AI is a fraud-detection platform built on the real anonymized ULB/Worldline credit-card dataset. It combines distributed data profiling, quality controls, leakage-safe feature engineering, CPU XGBoost modeling, Kafka replay, and Spark Structured Streaming.
+This distinction is intentional: the README reports what is implemented and verified, while unfinished production components are listed as next steps.
 
-### End-to-end platform
+## What is implemented
+
+- Real ULB/Worldline dataset ingestion instructions and schema contract
+- PySpark EDA over the full dataset
+- Missing-value, schema, duplicate, target, and amount validation
+- Quarantine output for invalid rows
+- Row-local temporal and amount features
+- Chronological 60/20/20 train/validation/test split
+- Logistic Regression baseline
+- CPU XGBoost benchmark with validation-selected threshold
+- Precision, recall, F1, ROC-AUC, PR-AUC, precision-at-K, confusion matrix, and timing metrics
+- Deterministic Kafka event schema and CSV replay producer
+- Spark Structured Streaming Kafka parser with watermarking and event deduplication
+- Airflow DAG skeleton for input validation, EDA, and benchmark execution
+- GitHub Actions workflow for tests, real-data benchmark, and Spark EDA
+
+## What is not implemented yet
+
+- The Gold feature set does not contain customer-history features because this dataset has no customer/card identifier.
+- The streaming job currently parses, watermarks, deduplicates, and writes events; its `risk_score` is intentionally not populated until model-artifact loading and feature parity are completed.
+- Bronze/Silver/Gold Parquet jobs are documented but not yet exposed as separate production-grade commands.
+- Kafka integration and streaming restart behavior have not been run against a live broker in CI.
+- The Airflow DAG is a local orchestration skeleton, not a complete production scheduler deployment.
+- No production claims are made about fraud reduction, availability, latency, compliance, or current fraud behavior.
+
+## Architecture
+
+The solid path is implemented today. The dashed path is the intended next integration step.
 
 ```mermaid
 flowchart LR
-    A[ULB / Worldline real transactions] --> B[Immutable Bronze Parquet]
-    B --> C[Silver quality layer]
-    C --> D[Gold point-in-time features]
-    D --> E[Chronological train / validation / test]
+    A[ULB / Worldline CSV] --> B[PySpark EDA]
+    A --> C[Quality validation]
+    C --> D[Row-local features]
+    D --> E[Chronological split]
     E --> F[Logistic baseline]
-    E --> G[CPU XGBoost]
-    F --> H[Validated model threshold]
-    G --> H
-    A --> I[Kafka replay producer]
+    E --> G[XGBoost benchmark]
+    A --> H[Validated event schema]
+    H --> I[Kafka replay producer]
     I --> J[Kafka topic]
-    J --> K[Spark Structured Streaming]
-    H --> K
-    K --> L[Idempotent predictions and alerts]
-    C --> M[Data-quality report]
-    F --> N[Model metrics]
-    G --> N
+    J --> K[Spark streaming parser]
+    K --> L[Watermark + deduplication]
+    L --> M[Parquet streaming output]
+    G -. model artifact + shared feature contract .-> K
+    K -. risk score + alert sink .-> N[Future scoring service]
 ```
 
-### Measured model comparison
+## Dataset
 
-The benchmark uses a chronological 60/20/20 split and selects the classification threshold on validation data only.
+The project uses the [ULB Machine Learning Group credit-card dataset on Kaggle](https://www.kaggle.com/mlg-ulb/creditcardfraud), also indexed as [OpenML dataset 1597](https://www.openml.org/search?id=1597). It contains 284,807 transactions from two days in September 2013 and 492 fraud labels. `V1`–`V28` are PCA-transformed for confidentiality; `Time`, `Amount`, and `Class` are the remaining interpretable fields.
 
-```mermaid
-xychart-beta
-    title "Measured test performance"
-    x-axis ["Logistic PR-AUC", "XGBoost PR-AUC", "Logistic F1", "XGBoost F1"]
-    y-axis "Score" 0 --> 1
-    bar [0.7611, 0.7820, 0.6344, 0.7761]
+The dataset has no stable customer/card identifier. Therefore, this project does not invent customer velocity, customer history, merchant history, or card-level behavior features. That is a limitation of the data, not an undocumented assumption.
+
+Download the CSV under the dataset’s published terms and place it at:
+
+```text
+data/raw/creditcard.csv
 ```
 
-XGBoost achieved higher PR-AUC, F1, precision, and precision-at-K in the recorded run; logistic regression retained higher recall. Full results are in [docs/benchmark.md](docs/benchmark.md) and [reports/benchmark_ulb.json](reports/benchmark_ulb.json).
-
-### Interview-ready project story
-
-1. **Business problem:** identify suspicious transactions while balancing missed fraud against investigator workload.
-2. **Engineering decision:** preserve raw data, validate it in Silver, and prevent future information from entering Gold features.
-3. **Modeling decision:** use logistic regression as a transparent baseline, then CPU XGBoost with class weighting and validation threshold selection.
-4. **Streaming decision:** replay real historical events through Kafka and score micro-batches with Spark; use stable event IDs and idempotent writes.
-5. **Trade-off:** this demonstrates production patterns locally, but it is not a production banking system because it lacks real customer identifiers, high availability, governance, and representative current data.
-
-## Dataset decision
-
-The project uses the **ULB/Worldline Credit Card Fraud Detection dataset**, a public anonymized dataset of real credit-card transactions. It contains 284,807 transactions over two days in September 2013, with 492 fraud cases (about 0.172%). The 28 `V1`–`V28` fields are PCA-transformed for confidentiality; `Time`, `Amount`, and `Class` remain interpretable. This is a real-data project, not a PaySim simulation.
-
-| Dataset | Strengths | Trade-offs | Decision |
-| --- | --- | --- | --- |
-| ULB/Worldline Credit Card Fraud Detection | Real anonymized transactions; severe class imbalance; 150 MB CSV; straightforward chronological replay | PCA fields reduce business interpretability; no customer/card ID, so customer-history features are not legitimate | **Use first** |
-| IEEE-CIS Fraud Detection | Real e-commerce transactions; richer identity/device/card fields and missingness | Greater operational complexity and more involved feature semantics | Future expansion |
-| PaySim | Easy entity-level streaming demonstration | Synthetic transactions and behavior | Not used as the project dataset |
-
-The dataset is available through the [ULB Machine Learning Group Kaggle page](https://www.kaggle.com/mlg-ulb/creditcardfraud) and also indexed by [OpenML dataset 1597](https://www.openml.org/search?id=1597). Download it manually or with the Kaggle CLI, then place `creditcard.csv` at `data/raw/creditcard.csv`. The raw file is gitignored.
+The raw file is ignored by Git. The helper script is [scripts/download_ulb_dataset.sh](scripts/download_ulb_dataset.sh).
 
 ## Quick start
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install -e . -r requirements-dev.txt
 
-# Download the real ULB/Worldline dataset first, then place it at:
-# data/raw/creditcard.csv
-
-# Run the Phase 1 Spark EDA job after installing PySpark and Java 17
-python -m finguard.phase1.eda \
+# After downloading data/raw/creditcard.csv:
+PYTHONPATH=src python -m finguard.phase1.eda \
   --input data/raw/creditcard.csv \
   --output reports/phase1 \
-  --master local[2]
+  --master 'local[2]'
 
-pytest -q
+PYTHONPATH=src python -m finguard.benchmark \
+  --input data/raw/creditcard.csv \
+  --output reports/benchmark_ulb.json
+
+PYTHONPATH=src pytest -q
 ```
 
-For the real-data run, execute `scripts/download_ulb_dataset.sh` after configuring the Kaggle CLI, or download the file manually and place it under `data/raw/`; raw data is intentionally gitignored. See [Phase 1 EDA](docs/phase-1-eda.md) for the command, expected report files, and interpretation guide.
+Spark 3.5 is run with Java 17 in CI. The full local validation command is:
 
-The reproducible offline benchmark is documented in [docs/benchmark.md](docs/benchmark.md) and generated at `reports/benchmark_ulb.json`. It compares balanced logistic regression with CPU XGBoost using a chronological split and a validation-selected threshold; it does not report invented results.
-
-## Architecture at a glance
-
-```mermaid
-flowchart LR
-    A[ULB/Worldline CSV / future sources] --> B[Bronze: immutable raw Parquet]
-    B --> C[Silver: typed, deduplicated, quality-checked]
-    C --> D[Gold: leakage-safe features]
-    D --> E[Chronological train / validation / test]
-    E --> F[Logistic baseline + XGBoost]
-    F --> G[Model artifact + threshold]
-    H[Kafka producer: historical replay] --> I[Kafka topic]
-    I --> J[Spark Structured Streaming]
-    G --> J
-    J --> K[Predictions + fraud alerts]
-    C --> L[Data quality report]
-    F --> M[Model metrics]
-    N[Airflow batch DAGs] --> B
-    N --> C
-    N --> D
-    N --> F
+```bash
+JAVA_HOME=/path/to/java-17 ./scripts/ci_local.sh
 ```
 
-The prototype uses one Kafka broker in KRaft mode, `local[2]` Spark, Parquet, and bounded micro-batches. Production-scale concerns are documented rather than implied by the prototype deployment.
+## Measured benchmark
 
-## What interviewers should notice
+Configuration: full ULB dataset, exact duplicates removed, chronological 60/20/20 split, class-weighted logistic regression, CPU XGBoost with histogram training, and threshold selected on validation F1.
 
-- **Data correctness:** raw data is preserved, invalid records are quarantined, and duplicate handling is explicit.
-- **Leakage prevention:** chronological splitting and point-in-time feature rules prevent future information from entering training or inference.
-- **Business-aligned evaluation:** PR-AUC, recall, precision, F1, precision-at-K, confusion matrices, and threshold selection are reported instead of accuracy alone.
-- **Distributed-systems reasoning:** Kafka offsets, replay, watermarking, checkpointing, late events, backpressure, and idempotent sinks are addressed explicitly.
-- **Production awareness:** the prototype distinguishes demonstrated behavior from requirements such as high availability, schema governance, model drift monitoring, and regulated-data controls.
+| Model | PR-AUC | ROC-AUC | Precision | Recall | F1 | Precision@K |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Logistic Regression | 0.7611 | 0.9841 | 0.5268 | 0.7973 | 0.6344 | 0.7297 |
+| XGBoost | **0.7820** | 0.9804 | **0.8667** | 0.7027 | **0.7761** | **0.7568** |
 
-The safe workflow is sequential: EDA → batch transforms → model training → streaming demo. Docker Compose limits are included for the infrastructure services, but the full stack is not intended to be started simultaneously on this machine.
+XGBoost produced better PR-AUC, precision, F1, and precision-at-K in the recorded run. Logistic Regression produced higher recall. These are one offline experiment, not universal performance claims.
 
-## Repository map
+Details and measured timings are in [docs/benchmark.md](docs/benchmark.md); the machine-readable output is [reports/benchmark_ulb.json](reports/benchmark_ulb.json).
+
+## Validation and CI
+
+The repository includes [.github/workflows/ci.yml](.github/workflows/ci.yml), which runs:
+
+1. Python compilation, pytest, and Ruff.
+2. Real ULB dataset download from the OpenML public mirror when the CI cache is empty.
+3. The full benchmark.
+4. Full Spark EDA with Java 17.
+5. Benchmark and EDA report artifact upload.
+
+The local equivalent has been run successfully: 8 tests passed, Ruff passed, the full real-data benchmark passed, and Spark EDA generated the profile for all 284,807 rows.
+
+## Interview focus
+
+- How duplicate handling changes the fraud population and why it must be documented.
+- Why chronological evaluation is safer than a random split for transaction data.
+- Why PR-AUC, recall, precision, and investigation capacity matter more than accuracy.
+- Why a threshold is selected separately from the model and fitted using validation data.
+- Why the absence of an entity identifier prevents legitimate customer-history features.
+- How Kafka offsets, event IDs, checkpoints, watermarks, late events, and idempotent sinks work together.
+- Which parts of this repository are demonstrated locally and which require production infrastructure.
+
+## Repository structure
 
 ```text
 FinGuardAI/
-├── README.md
-├── pyproject.toml
-├── requirements.txt                  # runtime dependencies
-├── requirements-dev.txt              # runtime + tests
-├── docker-compose.yml
-├── dags/                             # Airflow orchestration (later milestones)
+├── .github/workflows/ci.yml
+├── dags/finguard_batch.py
 ├── data/{raw,bronze,silver,gold,quarantine}/
-├── docs/
-│   ├── phase-1-eda.md
-│   ├── system-design.md
-│   ├── roadmap.md
-│   └── limitations.md
-├── notebooks/                        # exploratory notebooks, added per phase
-├── reports/                          # generated reports; only .gitkeep tracked
-├── scripts/                          # benchmark/demo entry points
+├── docs/{benchmark,phase-1-eda,roadmap,system-design}.md
+├── reports/benchmark_ulb.json
+├── scripts/{ci_local.sh,download_ulb_dataset.sh,stream_ulb.py}
 ├── src/finguard/
+│   ├── benchmark.py
 │   ├── config.py
-│   └── phase1/{eda.py,stats.py}
-├── tests/
-│   └── phase1/{test_stats.py,test_schema.py}
-└── docker/
+│   ├── features.py
+│   ├── quality.py
+│   ├── phase1/{eda,stats}.py
+│   └── streaming/{events,producer}.py
+└── tests/
 ```
 
-## Milestones
+## Documentation
 
-1. **Phase 1 — EDA:** real ULB/Worldline dataset, statistical profile, missingness and class-imbalance analysis.
-2. **Phase 2 — Quality + medallion layers:** schema validation, quarantine, deduplication, and Silver/Gold contracts.
-3. **Phase 3 — Features:** point-in-time-safe temporal, amount, and behavioral features.
-4. **Phase 4 — Models:** logistic baseline, CPU XGBoost, chronological evaluation, threshold selection, and model card.
-5. **Phase 5 — Kafka + streaming:** replay producer, Spark Structured Streaming, checkpointing, watermarking, idempotent sink.
-6. **Phase 6 — Airflow + observability:** batch DAGs, data-quality reports, latency/throughput measurements, and recovery drills.
-7. **Phase 7 — Interview demo:** one-command local demo, diagrams, limitations, and tested walkthrough.
-
-The detailed plan and theory for the first milestone are in [docs/phase-1-eda.md](docs/phase-1-eda.md); the complete system design is in [docs/system-design.md](docs/system-design.md).
-
-## Portfolio prototype boundary
-
-This project demonstrates engineering decisions on a small machine using public anonymized real transactions. It is not a production banking system: it has no identifiable customer data, no regulatory controls, no high-availability Kafka cluster, no online feature store, and no claim of production fraud-loss reduction. Every later phase will record measured results instead of inventing benchmarks.
+- [Benchmark methodology and results](docs/benchmark.md)
+- [Phase 1 EDA theory and validation](docs/phase-1-eda.md)
+- [System design and trade-offs](docs/system-design.md)
+- [Implementation roadmap](docs/roadmap.md)
+- [Docker Compose Kafka configuration](docker-compose.yml)
