@@ -8,6 +8,7 @@ milestone establishes reproducible, machine-readable profiling outputs.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
@@ -52,8 +53,11 @@ def profile(input_path: str | Path, output_dir: str | Path, master: str = "local
         numeric = [f.name for f in raw.schema.fields if f.dataType.simpleString() in {"int", "bigint", "double", "float", "long"}]
         numeric_summary = []
         if numeric:
-            summary = raw.select(numeric).summary("count", "mean", "stddev", "min", "25%", "50%", "75%", "max").toPandas()
-            numeric_summary = summary.to_dict(orient="records")
+            summary = raw.select(numeric).summary(
+                "count", "mean", "stddev", "min", "25%", "50%", "75%", "max"
+            )
+            summary_rows = [row.asDict() for row in summary.collect()]
+            numeric_summary = summary_rows
 
         fraud_column = next(
             (name for name in raw.columns if name.lower() in {"class", "isfraud"}),
@@ -79,7 +83,10 @@ def profile(input_path: str | Path, output_dir: str | Path, master: str = "local
         }
         (output / "profile.json").write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
         if numeric:
-            summary.to_csv(output / "numeric_summary.csv", index=False)
+            with (output / "numeric_summary.csv").open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=summary.columns)
+                writer.writeheader()
+                writer.writerows(summary_rows)
         return output
     finally:
         spark.stop()
