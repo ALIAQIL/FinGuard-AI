@@ -17,8 +17,10 @@ This distinction is intentional: the README reports what is implemented and veri
 - Row-local temporal and amount features
 - Chronological 60/20/20 train/validation/test split
 - Logistic Regression baseline
-- CPU XGBoost benchmark with validation-selected threshold
-- Precision, recall, F1, ROC-AUC, PR-AUC, precision-at-K, confusion matrix, and timing metrics
+- CPU XGBoost benchmark with deterministic time-aware randomized and grid search
+- PR-AUC model selection plus a top-1% investigation-capacity operating policy
+- Precision, recall, F1, ROC-AUC, PR-AUC, precision-at-K, alert-budget capture, confusion matrix, and timing metrics
+- Runtime, dependency, search-space, and cross-validation metadata in the benchmark report
 - Deterministic Kafka event schema and CSV replay producer
 - Spark Structured Streaming Kafka parser with watermarking and event deduplication
 - Airflow DAG skeleton for input validation, EDA, and benchmark execution
@@ -32,6 +34,8 @@ This distinction is intentional: the README reports what is implemented and veri
 - Kafka integration and streaming restart behavior have not been run against a live broker in CI.
 - The Airflow DAG is a local orchestration skeleton, not a complete production scheduler deployment.
 - No production claims are made about fraud reduction, availability, latency, compliance, or current fraud behavior.
+
+The evidence-based limitations and suspicious gaps are tracked in [docs/project-audit.md](docs/project-audit.md).
 
 ## Architecture
 
@@ -84,7 +88,11 @@ PYTHONPATH=src python -m finguard.phase1.eda \
 
 PYTHONPATH=src python -m finguard.benchmark \
   --input data/raw/creditcard.csv \
-  --output reports/benchmark_ulb.json
+  --output reports/benchmark_ulb.json \
+  --tune-xgboost \
+  --cv-splits 3 \
+  --random-search-iterations 4 \
+  --alert-rate 0.01
 
 PYTHONPATH=src pytest -q
 ```
@@ -97,14 +105,16 @@ JAVA_HOME=/path/to/java-17 ./scripts/ci_local.sh
 
 ## Measured benchmark
 
-Configuration: full ULB dataset, exact duplicates removed, chronological 60/20/20 split, class-weighted logistic regression, CPU XGBoost with histogram training, and threshold selected on validation F1.
+Configuration: full ULB dataset, exact duplicates removed, chronological 60/20/20 split, class-weighted logistic regression, CPU XGBoost with histogram training, three-fold temporal cross-validation, four randomized trials, four grid combinations, and a top-1% validation alert budget.
 
-| Model | PR-AUC | ROC-AUC | Precision | Recall | F1 | Precision@K |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Logistic Regression | 0.7611 | 0.9841 | 0.5268 | 0.7973 | 0.6344 | 0.7297 |
-| XGBoost | **0.7820** | 0.9804 | **0.8667** | 0.7027 | **0.7761** | **0.7568** |
+| Model | PR-AUC | Precision@1% alerts | Fraud capture@1% | F1 at 1% alerts |
+| --- | ---: | ---: | ---: | ---: |
+| Logistic Regression | 0.7611 | 0.1127 | 0.8649 | 0.1850 |
+| XGBoost baseline | 0.7820 | 0.1127 | 0.8649 | 0.2148 |
+| XGBoost randomized search | **0.7888** | **0.1127** | **0.8649** | 0.1928 |
+| XGBoost grid search | 0.7649 | 0.1109 | 0.8514 | **0.2062** |
 
-XGBoost produced better PR-AUC, precision, F1, and precision-at-K in the recorded run. Logistic Regression produced higher recall. These are one offline experiment, not universal performance claims.
+The recorded run selected the randomized-search model by training-only temporal CV PR-AUC (0.7900 versus 0.7766 for the grid search). The test set was evaluated once after the operating policy was selected. These are offline experiments, not universal performance claims; the fixed 1% alert budget is an explicit operating assumption, not a measured business outcome.
 
 Details and measured timings are in [docs/benchmark.md](docs/benchmark.md); the machine-readable output is [reports/benchmark_ulb.json](reports/benchmark_ulb.json).
 
@@ -114,11 +124,11 @@ The repository includes [.github/workflows/ci.yml](.github/workflows/ci.yml), wh
 
 1. Python compilation, pytest, and Ruff.
 2. Real ULB dataset download from the OpenML public mirror when the CI cache is empty.
-3. The full benchmark.
+3. The full benchmark, including both XGBoost searches.
 4. Full Spark EDA with Java 17.
 5. Benchmark and EDA report artifact upload.
 
-The local equivalent has been run successfully: 8 tests passed, Ruff passed, the full real-data benchmark passed, and Spark EDA generated the profile for all 284,807 rows.
+The local equivalent uses the shared `/home/aliaqil/Desktop/projects/.venv` environment. CI artifacts contain the measured benchmark and tuning metadata; no synthetic dataset is used.
 
 ## Interview focus
 
@@ -126,6 +136,8 @@ The local equivalent has been run successfully: 8 tests passed, Ruff passed, the
 - Why chronological evaluation is safer than a random split for transaction data.
 - Why PR-AUC, recall, precision, and investigation capacity matter more than accuracy.
 - Why a threshold is selected separately from the model and fitted using validation data.
+- Why PR-AUC is used for imbalanced model selection while alert-budget capture and precision express the business objective.
+- How RandomizedSearchCV and GridSearchCV are constrained to chronological training folds.
 - Why the absence of an entity identifier prevents legitimate customer-history features.
 - How Kafka offsets, event IDs, checkpoints, watermarks, late events, and idempotent sinks work together.
 - Which parts of this repository are demonstrated locally and which require production infrastructure.
@@ -156,4 +168,5 @@ FinGuardAI/
 - [Phase 1 EDA theory and validation](docs/phase-1-eda.md)
 - [System design and trade-offs](docs/system-design.md)
 - [Implementation roadmap](docs/roadmap.md)
+- [Evidence-based project audit](docs/project-audit.md)
 - [Docker Compose Kafka configuration](docker-compose.yml)

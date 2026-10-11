@@ -19,10 +19,22 @@ def test_quality_detects_duplicates_and_bad_amount():
     report = validate_ulb_frame(frame)
     assert report.exact_duplicates == 1
     assert report.negative_amount_rows == 1
+    assert report.contract_invalid_rows == 1
+    assert report.contract_valid_rows == 31
+    assert report.accepted_rows_after_dedup == 30
     accepted, quarantine, _ = clean_ulb_frame(frame)
     assert len(accepted) == 30
     assert len(quarantine) == 1
     assert quarantine.iloc[0]["quarantine_reason"] == "negative_amount"
+
+
+def test_quarantine_preserves_multiple_reasons():
+    frame = _frame().iloc[:2].copy()
+    frame.loc[0, "Class"] = 2
+    frame.loc[0, "Amount"] = -1
+    _, quarantine, report = clean_ulb_frame(frame)
+    assert report.contract_invalid_rows == 1
+    assert quarantine.iloc[0]["quarantine_reason"] == "invalid_class;negative_amount"
 
 
 def test_features_are_row_local_and_do_not_create_entity_history():
@@ -30,4 +42,3 @@ def test_features_are_row_local_and_do_not_create_entity_history():
     assert {"event_hour", "event_day", "amount_log1p"}.issubset(result.columns)
     assert "customer_id" not in result.columns
     assert result.loc[1, "event_hour"] == 1
-

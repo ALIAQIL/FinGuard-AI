@@ -21,6 +21,7 @@ jobs:
       - run: python -m pip install -e . -r requirements-dev.txt
       - run: python -m compileall -q src tests
       - run: pytest -q
+      - run: ruff check src tests dags scripts
 
   real-data-benchmark:
     runs-on: ubuntu-latest
@@ -53,7 +54,14 @@ jobs:
               _load_openml(target)
           print(target, target.stat().st_size)
           PY
-      - run: python -m finguard.benchmark --input data/raw/creditcard.csv --output reports/benchmark_ulb.json
+      - run: >-
+          python -m finguard.benchmark
+          --input data/raw/creditcard.csv
+          --output reports/benchmark_ulb.json
+          --tune-xgboost
+          --cv-splits 3
+          --random-search-iterations 4
+          --alert-rate 0.01
       - run: python -m finguard.phase1.eda --input data/raw/creditcard.csv --output reports/phase1 --master 'local[2]'
       - uses: actions/upload-artifact@v4
         with:
