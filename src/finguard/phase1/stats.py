@@ -6,9 +6,9 @@ helpers keep definitions explicit and make edge cases easy to unit test.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from math import sqrt
 from statistics import median
-from collections.abc import Iterable, Sequence
 
 
 def _values(values: Iterable[float]) -> list[float]:
