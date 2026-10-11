@@ -62,7 +62,7 @@ def _classification_metrics(y_true: pd.Series, predictions: np.ndarray) -> dict[
 
 
 def _top_k_indices(probabilities: np.ndarray, alert_rate: float) -> np.ndarray:
-    k = max(1, int(math.ceil(len(probabilities) * alert_rate)))
+    k = max(1, math.ceil(len(probabilities) * alert_rate))
     return np.argsort(-probabilities, kind="stable")[:k]
 
 
@@ -158,7 +158,7 @@ def _search_summary(search: Any) -> dict[str, Any]:
     return {
         "best_score": float(search.best_score_),
         "best_params": _json_value(search.best_params_),
-        "trials": int(len(results["params"])),
+        "trials": len(results["params"]),
         "top_results": top_results,
     }
 

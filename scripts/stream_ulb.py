@@ -11,7 +11,9 @@ import argparse
 
 
 def main() -> None:
-    from pyspark.sql import SparkSession, functions as F, types as T
+    from pyspark.sql import SparkSession
+    from pyspark.sql import functions as F
+    from pyspark.sql import types as T
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--bootstrap-servers", default="localhost:9092")
@@ -64,4 +66,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

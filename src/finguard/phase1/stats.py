@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from math import sqrt
 from statistics import median
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 
 def _values(values: Iterable[float]) -> list[float]:
@@ -46,4 +46,3 @@ def iqr(values: Iterable[float]) -> float:
 def z_score(value: float, values: Sequence[float]) -> float:
     sd = sample_stddev(values)
     return (float(value) - mean(values)) / sd if sd else 0.0
-
